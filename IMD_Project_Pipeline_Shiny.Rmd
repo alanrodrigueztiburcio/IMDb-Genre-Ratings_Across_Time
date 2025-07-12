@@ -1,0 +1,185 @@
+---
+title: "Film Quality by Genres Across Time (IMDb)"
+author: "Alan"
+date: "2025-07-12"
+output: html_document
+runtime: shiny
+output:
+  html_document:
+    df_print: paged
+---
+
+```{001_Prep_Clean}
+# ---- In this file we ----
+# - Load libraries
+# - Load data into a data frame
+# - 
+
+setwd("C:/Users/Alan5/OneDrive/Desktop/Data Science/010_PP_IMDb_Change_Opinion")
+library(ggplot2)
+library(tidyverse)
+library(tidyr)
+
+### IMDb files -----------------------------
+bas<- read.csv("Title_Basic_CSV.csv")
+rat<- read.csv ("Title_Rating_CSV.csv")
+
+### Merging files -----------------------------
+
+dat<- merge(bas, rat, by="tconst")
+
+##cleaning some stuff --------------
+dat$runtimeMinutes <- as.numeric(dat$runtimeMinutes) ##making run times numeric
+dat<- dat[dat$genre1 !="\\N",] ##dropping useless genres
+dat<- dat[dat$genre1 !="/N",] ##dropping useless genres
+dat<- dat[dat$runtimeMinutes != "/N",] #dropping useless runtimes
+dat<- na.omit(dat)
+dat$startYear <- as.numeric(dat$startYear)
+
+
+###Seperate by genres####
+act<- dat[dat$genre1 == 'Action',]
+adu<- dat[dat$genre1 == 'Adult',]
+adv<- dat[dat$genre1 == 'Adventure',]
+ani<- dat[dat$genre1 == 'Animation',]
+bio<- dat[dat$genre1 == 'Biography',]
+com<- dat[dat$genre1 == 'Comedy',]
+cri<- dat[dat$genre1 == 'Crime',]
+doc<- dat[dat$genre1 == 'Documentary',]
+dra<- dat[dat$genre1 == 'Drama',]
+fam<- dat[dat$genre1 == 'Family',]
+fan<- dat[dat$genre1 == 'Fantasy',]
+noi<- dat[dat$genre1 == 'Film-Noir',]
+gam<- dat[dat$genre1 == 'Game-Show',]
+his<- dat[dat$genre1 == 'History',]
+hor<- dat[dat$genre1 == 'Horror',]
+mus1<- dat[dat$genre1 == 'Music',]
+mus2<- dat[dat$genre1 == 'Musical',]
+mys<- dat[dat$genre1 == 'Mystery',]
+news<- dat[dat$genre1 == 'News',]
+rea<- dat[dat$genre1 == 'Reality-TV',]
+rom<- dat[dat$genre1 == 'Romance',]
+sci<- dat[dat$genre1 == 'Sci-Fi',]
+shrt<- dat[dat$genre1 == 'Short',]
+sprt<- dat[dat$genre1 == 'Sport',]
+talk<- dat[dat$genre1 == 'Talk-Show',]
+thr<- dat[dat$genre1 == 'Thriller',]
+war<- dat[dat$genre1 == 'War',]
+wes<- dat[dat$genre1 == 'Western',]
+
+```
+
+```{r modelling_correlations}
+# ---- Here we ----
+# - Test some simple and theoretical models
+  # - There's a weak signal that average rating and start year track positvely
+    # - So films are getting better?
+      # - Maybe but not by much.
+  # - A linear model of predicting rating through year was weak and positive
+    # - Beta = .000626, SE = .000009512, p < .001
+    # - R-squared = 0.0126
+      # - Pretty low variance explained *sad face*
+  # - The multilevel model is a lot of information to digest
+    # - It fits a *little* better.
+      # - R-squared = 0.1269
+        # - So ~13% of the variance explained. Alright, not *terrible*.
+    # - I can probably organize it in a dataframe and extract some key stats.
+# - Plot some dots
+
+# Libraries for here!:
+library(modelsummary)
+library(car)
+library(plotly)
+library(ggplot2)
+
+modern_theme <- theme_minimal(base_family = "Helvetica") +
+  theme(
+    legend.position = "right",
+    legend.title = element_blank(),
+    legend.key.height = unit(0.5, "cm"),
+    legend.text = element_text(size = 10),
+    axis.title = element_text(size = 12, face = "bold"),
+    axis.text = element_text(size = 10),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "#e5e5e5", linetype = "dashed"),
+    plot.title = element_text(face = "bold", size = 14, hjust = 0.5)
+  )
+
+
+###Assumption testing####
+cor.test(dat$averageRating, dat$startYear) ##Not 0 but very weak, ~0.1288, significant
+
+ggplot(dat, aes(x=startYear, y=averageRating)) + geom_point() ##Looking for outliers
+
+##Model
+simyr<- lm(formula = averageRating~startYear, data = dat)
+summary(simyr)
+sigma(simyr)
+simyr
+
+plot(dat$startYear, dat$averageRating)
+
+### MLM average rating as a correlate to year of release and genres####
+
+# We run a multilevel model predicting average ratings with these predictors:
+  # 1) Release year
+  # 2) Primary genre
+  # 3) Secondary genre
+  # 4) Tertiary genre
+
+# Setting "Drama" as the reference level for the genre variables
+  # - Just because it was common.
+
+dat$genre1 <- relevel(factor(dat$genre1), ref = "Drama")
+dat$genre2 <- relevel(factor(dat$genre2), ref = "Drama")
+dat$genre3 <- relevel(factor(dat$genre3), ref = "Drama")
+
+
+mlmyg<- lm(formula= averageRating~startYear+genre1+genre2+genre3, data = dat)
+summary(mlmyg)
+
+# Here we have a nice table of our coefficents 
+  # The effect of release year on ratings
+    # - Beta = 0.007 (tiny!), SE = 0.00009 (tiny!), P > .01 (tiny dub!)
+
+mlm_coeff <- as.data.frame(summary(mlmyg)$coefficients)
+
+# Extracting genre predictors only, just to see which genre "most" improved or worsened
+
+genre_coeff <- mlm_coeff %>%
+  mutate(term = rownames(.)) %>%
+  filter(grepl("^genre", term))  %>%
+  mutate(
+    genre = sub("^genre[123]", "", term),  # removes 'genre1', 'genre2', 'genre3'
+    deviation_from_mean = Estimate - mean(Estimate)
+  )
+
+# Now we group the genre categories together to get the average effect of being a genre, regardless of whether it's primary, secondary, or tertiary. I feel justified in doing this to see the general effect of a genre.
+
+
+genre_summary <- genre_coeff %>%
+  group_by(genre) %>%
+  summarise(total_effect = sum(Estimate), mean_effect = mean(Estimate), n = n()) %>%
+  arrange(desc(mean_effect))  # or desc(total_effect)
+
+# Aaaaaaand genres that "most" improved a film's rating (compared to Dramas):
+  # 1) Westerns, Total Beta = 0.447, Mean Beta = 0.149
+  # 2) Documentary, Total Beta = 0.376, Mean Beta = 0.125
+  # 3) Animation, Total Beta = 0.247, Mean Beta = 0.082
+  # 4) Music, Total Beta = 0.103, Mean Beta = 0.034
+
+###Visualization####
+###Visuals of aggregate data####
+p <- ggplot(dat, aes(x = startYear, y = averageRating, color = genre1, group = genre1)) +
+  geom_smooth(se = FALSE, method = "lm", linewidth = 1.1) +
+  scale_color_viridis_d(option = "C") +
+  modern_theme +
+  labs(
+    title = "IMDb Ratings Over Time by Primary Genre",
+    x = "Release Year",
+    y = "Average IMDb Rating"
+  )
+
+# Make interactive
+ggplotly(p, tooltip = "colour") 
+```
