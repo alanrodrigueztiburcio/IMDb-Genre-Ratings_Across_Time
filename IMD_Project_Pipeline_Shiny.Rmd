@@ -2,14 +2,12 @@
 title: "Film Quality by Genres Across Time (IMDb)"
 author: "Alan"
 date: "2025-07-12"
-output: html_document
-runtime: shiny
 output:
   html_document:
     df_print: paged
 ---
 
-```{001_Prep_Clean}
+```{r 001_Prep_Clean, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
 # ---- In this file we ----
 # - Load libraries
 # - Load data into a data frame
@@ -38,38 +36,38 @@ dat$startYear <- as.numeric(dat$startYear)
 
 
 ###Seperate by genres####
-act<- dat[dat$genre1 == 'Action',]
-adu<- dat[dat$genre1 == 'Adult',]
-adv<- dat[dat$genre1 == 'Adventure',]
-ani<- dat[dat$genre1 == 'Animation',]
-bio<- dat[dat$genre1 == 'Biography',]
-com<- dat[dat$genre1 == 'Comedy',]
-cri<- dat[dat$genre1 == 'Crime',]
-doc<- dat[dat$genre1 == 'Documentary',]
-dra<- dat[dat$genre1 == 'Drama',]
-fam<- dat[dat$genre1 == 'Family',]
-fan<- dat[dat$genre1 == 'Fantasy',]
-noi<- dat[dat$genre1 == 'Film-Noir',]
-gam<- dat[dat$genre1 == 'Game-Show',]
-his<- dat[dat$genre1 == 'History',]
-hor<- dat[dat$genre1 == 'Horror',]
-mus1<- dat[dat$genre1 == 'Music',]
-mus2<- dat[dat$genre1 == 'Musical',]
-mys<- dat[dat$genre1 == 'Mystery',]
-news<- dat[dat$genre1 == 'News',]
-rea<- dat[dat$genre1 == 'Reality-TV',]
-rom<- dat[dat$genre1 == 'Romance',]
-sci<- dat[dat$genre1 == 'Sci-Fi',]
-shrt<- dat[dat$genre1 == 'Short',]
-sprt<- dat[dat$genre1 == 'Sport',]
-talk<- dat[dat$genre1 == 'Talk-Show',]
-thr<- dat[dat$genre1 == 'Thriller',]
-war<- dat[dat$genre1 == 'War',]
-wes<- dat[dat$genre1 == 'Western',]
+# act<- dat[dat$genre1 == 'Action',]
+# adu<- dat[dat$genre1 == 'Adult',]
+# adv<- dat[dat$genre1 == 'Adventure',]
+# ani<- dat[dat$genre1 == 'Animation',]
+# bio<- dat[dat$genre1 == 'Biography',]
+# com<- dat[dat$genre1 == 'Comedy',]
+# cri<- dat[dat$genre1 == 'Crime',]
+# doc<- dat[dat$genre1 == 'Documentary',]
+# dra<- dat[dat$genre1 == 'Drama',]
+# fam<- dat[dat$genre1 == 'Family',]
+# fan<- dat[dat$genre1 == 'Fantasy',]
+# noi<- dat[dat$genre1 == 'Film-Noir',]
+# gam<- dat[dat$genre1 == 'Game-Show',]
+# his<- dat[dat$genre1 == 'History',]
+# hor<- dat[dat$genre1 == 'Horror',]
+# mus1<- dat[dat$genre1 == 'Music',]
+# mus2<- dat[dat$genre1 == 'Musical',]
+# mys<- dat[dat$genre1 == 'Mystery',]
+# news<- dat[dat$genre1 == 'News',]
+# rea<- dat[dat$genre1 == 'Reality-TV',]
+# rom<- dat[dat$genre1 == 'Romance',]
+# sci<- dat[dat$genre1 == 'Sci-Fi',]
+# shrt<- dat[dat$genre1 == 'Short',]
+# sprt<- dat[dat$genre1 == 'Sport',]
+# talk<- dat[dat$genre1 == 'Talk-Show',]
+# thr<- dat[dat$genre1 == 'Thriller',]
+# war<- dat[dat$genre1 == 'War',]
+# wes<- dat[dat$genre1 == 'Western',]
 
 ```
 
-```{r modelling_correlations}
+```{r modelling_correlations, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
 # ---- Here we ----
 # - Test some simple and theoretical models
   # - There's a weak signal that average rating and start year track positvely
@@ -89,21 +87,6 @@ wes<- dat[dat$genre1 == 'Western',]
 # Libraries for here!:
 library(modelsummary)
 library(car)
-library(plotly)
-library(ggplot2)
-
-modern_theme <- theme_minimal(base_family = "Helvetica") +
-  theme(
-    legend.position = "right",
-    legend.title = element_blank(),
-    legend.key.height = unit(0.5, "cm"),
-    legend.text = element_text(size = 10),
-    axis.title = element_text(size = 12, face = "bold"),
-    axis.text = element_text(size = 10),
-    panel.grid.minor = element_blank(),
-    panel.grid.major = element_line(color = "#e5e5e5", linetype = "dashed"),
-    plot.title = element_text(face = "bold", size = 14, hjust = 0.5)
-  )
 
 
 ###Assumption testing####
@@ -167,19 +150,159 @@ genre_summary <- genre_coeff %>%
   # 2) Documentary, Total Beta = 0.376, Mean Beta = 0.125
   # 3) Animation, Total Beta = 0.247, Mean Beta = 0.082
   # 4) Music, Total Beta = 0.103, Mean Beta = 0.034
+```
+
+```{r visuals, echo=FALSE}
+library(plotly) # Plotting
+library(ggplot2) # Plotting
+library(tidyr) # Manipulation
+library(purrr) # Interactivity
+library(viridisLite) # Interactivity
+
+# Pivot data long to merge genre variables together
+dat_long <- dat %>%
+  pivot_longer(
+    cols = starts_with("genre"),
+    names_to = "genre_position",
+    values_to = "Genre"
+  ) %>%
+  filter(Genre != "", !is.na(Genre)) %>%
+  distinct(tconst, Genre, .keep_all = TRUE)
+
+# calculate slop rating over time for genre
+genre_slopes <- dat_long %>%
+  group_by(Genre) %>%
+  summarize(
+    slope = coef(lm(averageRating ~ startYear))[2],
+    cor = cor(startYear, averageRating, use = "complete.obs")
+    )  %>%
+  mutate(
+    slope_label = paste0(
+      "Change in Rating for Each Year = ", round(slope, 3)),
+    cor_label = paste0(
+      "Correlation = ", round(cor, 3))
+    ) %>%
+  arrange(desc(slope))
+
+# Reorder genre levels by correlation
+dat_long <- dat_long %>%
+  mutate(Genre = factor(Genre, levels = genre_slopes$Genre)) %>%
+  left_join(genre_slopes, by = "Genre")
+
+# Prep for visual model
+genre_models <- dat_long %>%
+  group_by(Genre) %>%
+  nest() %>%
+  mutate(
+    model_obj = map(data, ~ safely(lm)(averageRating ~ startYear, data = .x)),
+    is_valid = map_lgl(model_obj, ~ !is.null(.x$result)),
+    model = map(model_obj, "result")
+  ) %>%
+  filter(is_valid) %>%
+  mutate(
+    line_data = map2(data, model, ~ {
+      # Handle model edge cases gracefully
+      year_range <- range(.x$startYear, na.rm = TRUE)
+      pred_years <- seq(year_range[1], year_range[2], length.out = 100)
+      
+      pred_df <- data.frame(startYear = pred_years)
+      preds <- tryCatch(
+        predict(.y, newdata = pred_df),
+        error = function(e) return(rep(NA, length(pred_years)))
+      )
+      
+      if (all(is.na(preds))) return(NULL)  # filter later
+
+      tibble(
+        startYear = pred_years,
+        averageRating = preds,
+        Genre = .x$Genre[1]
+      )
+    })
+  ) %>%
+  filter(!map_lgl(line_data, is.null)) %>%
+  select(Genre, line_data) %>%
+  unnest(line_data)
+
+genre_models <- genre_models %>%
+  left_join(genre_slopes, by = "Genre")
+
+# Theme and prep
+sorted_genres <- genre_slopes$Genre
+
+
+genre_palette <- setNames(
+  viridisLite::viridis(
+    length(sorted_genres), option = "C"),
+  sorted_genres)
+
+buttons <- list()
+trace_index <- 0
 
 ###Visualization####
 ###Visuals of aggregate data####
-p <- ggplot(dat, aes(x = startYear, y = averageRating, color = genre1, group = genre1)) +
-  geom_smooth(se = FALSE, method = "lm", linewidth = 1.1) +
-  scale_color_viridis_d(option = "C") +
-  modern_theme +
-  labs(
-    title = "IMDb Ratings Over Time by Primary Genre",
-    x = "Release Year",
-    y = "Average IMDb Rating"
+plt <- plot_ly()
+trace_visibility <- list()
+
+for (g in sorted_genres) {
+  g_data <- genre_models %>% filter(Genre == g)
+  slope_val <- unique(g_data$slope)
+  cor_val <- genre_slopes$cor[genre_slopes$Genre == g]
+
+  plt <- add_trace(
+    plt,
+    data = g_data,
+    x = ~startYear,
+    y = ~averageRating,
+    type = "scatter",
+    mode = "lines",
+    name = g,
+    text = paste0(
+      "Genre: ", g,
+      "<br>Rating x Year Slope: ", round(slope_val, 3),
+      "<br>Correlation: ", round(cor_val, 3)
+    ),
+    hoverinfo = "text",
+    line = list(width = 2, color = genre_palette[[g]]),
+    visible = TRUE
   )
 
-# Make interactive
-ggplotly(p, tooltip = "colour") 
+  trace_visibility[[g]] <- length(trace_visibility) + 1
+}
+
+n_traces <- length(trace_visibility)
+buttons <- list()
+
+# Button to show all genres
+buttons[[1]] <- list(
+  method = "restyle",
+  args = list("visible", rep(TRUE, n_traces)),
+  label = "All Genres"
+)
+
+# Individual genre buttons
+for (i in seq_along(sorted_genres)) {
+  buttons[[i]] <- list(
+    method = "restyle",
+    args = list("visible", lapply(seq_len(n_traces), function(x) x == i)),
+    label = as.character(sorted_genres[i])
+  )
+}
+
+
+plt <- plt %>%
+  layout(
+    title = "IMDb Ratings Over Time by Genre",
+    xaxis = list(title = "Release Year"),
+    yaxis = list(title = "Average IMDb Rating"),
+    legend = list(title = list(text = "<b>Genre (from most to least improved over time)</b>")),
+    hovermode = "closest",
+    legend = list(
+      title = list(text = "<b>Genre (from most to least improved over time)</b>"),
+      itemclick = "toggle",
+      itemdoubleclick = "toggleothers"
+      )
+    )
+
+plt
 ```
